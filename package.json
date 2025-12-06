@@ -1,0 +1,58 @@
+{
+  "name": "shortcuts-tui",
+  "version": "0.1.0",
+  "description": "A terminal-based shortcuts cheat sheet with fuzzy search and native integrations for Zellij, tmux, and Neovim",
+  "type": "module",
+  "main": "src/index.tsx",
+  "bin": {
+    "shortcuts-tui": "./dist/shortcuts-tui"
+  },
+  "scripts": {
+    "dev": "bun run src/index.tsx",
+    "build": "bun build ./src/index.tsx --compile --outfile=dist/shortcuts-tui",
+    "build:all": "bun run build:linux && bun run build:macos-arm && bun run build:macos-intel && bun run build:windows",
+    "build:linux": "bun build ./src/index.tsx --compile --target=bun-linux-x64 --outfile=dist/shortcuts-tui-linux-x64",
+    "build:macos-arm": "bun build ./src/index.tsx --compile --target=bun-darwin-arm64 --outfile=dist/shortcuts-tui-darwin-arm64",
+    "build:macos-intel": "bun build ./src/index.tsx --compile --target=bun-darwin-x64 --outfile=dist/shortcuts-tui-darwin-x64",
+    "build:windows": "bun build ./src/index.tsx --compile --target=bun-windows-x64 --outfile=dist/shortcuts-tui-windows-x64.exe",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "format": "prettier --write src/"
+  },
+  "dependencies": {
+    "ink": "^5.1.0",
+    "ink-text-input": "^6.0.0",
+    "fzf": "^0.5.2",
+    "js-yaml": "^4.1.0",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.14",
+    "@types/js-yaml": "^4.0.9",
+    "@types/react": "^18.3.14",
+    "typescript": "^5.7.2",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
+    "eslint": "^9.16.0",
+    "prettier": "^3.4.2"
+  },
+  "author": "Raul Gracia",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/raul-gracia/shortcuts-tui.git"
+  },
+  "keywords": [
+    "cli",
+    "tui",
+    "terminal",
+    "shortcuts",
+    "cheatsheet",
+    "which-key",
+    "ink",
+    "react",
+    "zellij",
+    "tmux",
+    "neovim"
+  ]
+}

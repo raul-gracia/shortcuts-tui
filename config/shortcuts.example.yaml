@@ -1,0 +1,194 @@
+# Shortcuts TUI Configuration
+# Copy this file to ~/.config/shortcuts-tui/shortcuts.yaml
+
+# Optional theme customization (Tokyo Night default)
+theme:
+  primary: "#7aa2f7"
+  secondary: "#9ece6a"
+  background: "#1a1b26"
+  text: "#c0caf5"
+  muted: "#565f89"
+  border: "#3b4261"
+  highlight: "#33467c"
+
+# Define your shortcut categories
+categories:
+  - name: Git
+    icon: ""
+    color: "#f7768e"
+    groups:
+      - name: Basics
+        shortcuts:
+          - keys: "git status"
+            description: "Check repository status"
+          - keys: "git add ."
+            description: "Stage all changes"
+          - keys: "git add -p"
+            description: "Stage interactively"
+          - keys: "git commit -m"
+            description: "Commit with message"
+          - keys: "git commit --amend"
+            description: "Amend last commit"
+          - keys: "git push"
+            description: "Push to remote"
+          - keys: "git pull"
+            description: "Pull from remote"
+          - keys: "git fetch"
+            description: "Fetch without merge"
+
+      - name: Branches
+        shortcuts:
+          - keys: "git checkout -b <name>"
+            description: "Create & switch branch"
+          - keys: "git branch -d <name>"
+            description: "Delete branch"
+          - keys: "git branch -D <name>"
+            description: "Force delete branch"
+          - keys: "git merge <branch>"
+            description: "Merge branch"
+          - keys: "git rebase <branch>"
+            description: "Rebase onto branch"
+
+      - name: History
+        shortcuts:
+          - keys: "git log --oneline"
+            description: "Compact log view"
+          - keys: "git log --graph"
+            description: "Visual branch graph"
+          - keys: "git diff"
+            description: "Show unstaged changes"
+          - keys: "git diff --staged"
+            description: "Show staged changes"
+
+  - name: Neovim
+    icon: ""
+    color: "#7aa2f7"
+    groups:
+      - name: File Navigation
+        shortcuts:
+          - keys: "<leader>ff"
+            description: "Find files"
+          - keys: "<leader>fg"
+            description: "Live grep"
+          - keys: "<leader>fb"
+            description: "Find buffers"
+          - keys: "<leader>fr"
+            description: "Recent files"
+          - keys: "<leader>e"
+            description: "File explorer"
+
+      - name: LSP
+        shortcuts:
+          - keys: "gd"
+            description: "Go to definition"
+          - keys: "gr"
+            description: "Go to references"
+          - keys: "gI"
+            description: "Go to implementation"
+          - keys: "K"
+            description: "Hover documentation"
+          - keys: "<leader>ca"
+            description: "Code action"
+          - keys: "<leader>rn"
+            description: "Rename symbol"
+          - keys: "<leader>cf"
+            description: "Format file"
+
+      - name: Editing
+        shortcuts:
+          - keys: "gcc"
+            description: "Toggle line comment"
+          - keys: "gc"
+            description: "Toggle selection comment"
+          - keys: "<leader>/"
+            description: "Toggle comment"
+          - keys: "J"
+            description: "Join lines"
+          - keys: "<C-a> / <C-x>"
+            description: "Increment/decrement"
+
+  - name: Tmux
+    icon: ""
+    color: "#9ece6a"
+    groups:
+      - name: Panes
+        shortcuts:
+          - keys: "prefix %"
+            description: "Split vertical"
+          - keys: 'prefix "'
+            description: "Split horizontal"
+          - keys: "prefix x"
+            description: "Close pane"
+          - keys: "prefix z"
+            description: "Toggle zoom"
+          - keys: "prefix {/}"
+            description: "Move pane left/right"
+          - keys: "prefix o"
+            description: "Next pane"
+
+      - name: Windows
+        shortcuts:
+          - keys: "prefix c"
+            description: "New window"
+          - keys: "prefix n"
+            description: "Next window"
+          - keys: "prefix p"
+            description: "Previous window"
+          - keys: "prefix &"
+            description: "Kill window"
+          - keys: "prefix ,"
+            description: "Rename window"
+          - keys: "prefix [0-9]"
+            description: "Switch to window N"
+
+      - name: Sessions
+        shortcuts:
+          - keys: "prefix s"
+            description: "List sessions"
+          - keys: "prefix $"
+            description: "Rename session"
+          - keys: "prefix d"
+            description: "Detach"
+          - keys: "tmux attach -t"
+            description: "Attach to session"
+
+  - name: Docker
+    icon: ""
+    color: "#0db7ed"
+    groups:
+      - name: Containers
+        shortcuts:
+          - keys: "docker ps"
+            description: "List running containers"
+          - keys: "docker ps -a"
+            description: "List all containers"
+          - keys: "docker exec -it"
+            description: "Interactive shell"
+          - keys: "docker logs -f"
+            description: "Follow container logs"
+          - keys: "docker stop"
+            description: "Stop container"
+          - keys: "docker rm"
+            description: "Remove container"
+
+      - name: Images
+        shortcuts:
+          - keys: "docker images"
+            description: "List images"
+          - keys: "docker build -t"
+            description: "Build with tag"
+          - keys: "docker pull"
+            description: "Pull image"
+          - keys: "docker rmi"
+            description: "Remove image"
+
+      - name: Compose
+        shortcuts:
+          - keys: "docker compose up -d"
+            description: "Start services detached"
+          - keys: "docker compose down"
+            description: "Stop services"
+          - keys: "docker compose logs -f"
+            description: "Follow logs"
+          - keys: "docker compose ps"
+            description: "List services"
