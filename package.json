@@ -1,6 +1,6 @@
 {
   "name": "shortcuts-tui",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "A terminal-based shortcuts cheat sheet with fuzzy search and native integrations for Zellij, tmux, and Neovim",
   "type": "module",
   "main": "src/index.tsx",
