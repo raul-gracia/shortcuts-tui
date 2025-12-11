@@ -17,6 +17,9 @@ jobs:
           - os: ubuntu-latest
             target: bun-linux-x64
             artifact: shortcuts-tui-linux-x64
+          - os: ubuntu-latest
+            target: bun-linux-arm64
+            artifact: shortcuts-tui-linux-arm64
           - os: macos-latest
             target: bun-darwin-arm64
             artifact: shortcuts-tui-darwin-arm64
