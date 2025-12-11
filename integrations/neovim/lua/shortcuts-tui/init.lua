@@ -92,13 +92,13 @@ function M.open()
   -- Set up buffer keymaps
   local opts = { buffer = buf, noremap = true, silent = true }
 
-  -- ESC in terminal mode closes the window
-  vim.keymap.set("t", "<Esc>", function()
+  -- Ctrl-C force closes the window (ESC is handled by shortcuts-tui itself)
+  vim.keymap.set("t", "<C-c>", function()
     close_window()
   end, opts)
 
-  -- Also allow q to close (will be caught by shortcuts-tui first)
-  vim.keymap.set("t", "<C-c>", function()
+  -- Double-ESC as fallback to close window if app doesn't respond
+  vim.keymap.set("t", "<Esc><Esc>", function()
     close_window()
   end, opts)
 end

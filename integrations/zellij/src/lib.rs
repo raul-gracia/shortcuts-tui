@@ -118,9 +118,9 @@ impl ShortcutsTui {
         });
     }
 
-    fn handle_key(&mut self, key: KeyWithModifier) -> bool {
-        match key.bare_key {
-            BareKey::Esc => {
+    fn handle_key(&mut self, key: Key) -> bool {
+        match key {
+            Key::Esc => {
                 if self.search_mode {
                     self.search_mode = false;
                     self.search_query.clear();
@@ -129,29 +129,33 @@ impl ShortcutsTui {
                 }
                 true
             }
-            BareKey::Char('q') if !self.search_mode => {
+            Key::Char('q') if !self.search_mode => {
                 close_focus();
                 true
             }
-            BareKey::Char('/') if !self.search_mode => {
+            Key::Char('/') if !self.search_mode => {
                 self.search_mode = true;
                 true
             }
-            BareKey::Tab => {
+            Key::Char('\t') => {
+                // Tab key
                 if let Some(config) = &self.config {
-                    if key.has_modifiers(&[KeyModifier::Shift]) {
-                        self.active_tab = if self.active_tab == 0 {
-                            config.categories.len() - 1
-                        } else {
-                            self.active_tab - 1
-                        };
-                    } else {
-                        self.active_tab = (self.active_tab + 1) % config.categories.len();
-                    }
+                    self.active_tab = (self.active_tab + 1) % config.categories.len();
                 }
                 true
             }
-            BareKey::Char(c) if c.is_ascii_digit() && !self.search_mode => {
+            Key::BackTab => {
+                // Shift+Tab
+                if let Some(config) = &self.config {
+                    self.active_tab = if self.active_tab == 0 {
+                        config.categories.len() - 1
+                    } else {
+                        self.active_tab - 1
+                    };
+                }
+                true
+            }
+            Key::Char(c) if c.is_ascii_digit() && !self.search_mode => {
                 let idx = c.to_digit(10).unwrap() as usize;
                 if idx >= 1 {
                     if let Some(config) = &self.config {
@@ -162,11 +166,11 @@ impl ShortcutsTui {
                 }
                 true
             }
-            BareKey::Char(c) if self.search_mode => {
+            Key::Char(c) if self.search_mode => {
                 self.search_query.push(c);
                 true
             }
-            BareKey::Backspace if self.search_mode => {
+            Key::Backspace if self.search_mode => {
                 self.search_query.pop();
                 true
             }
@@ -190,7 +194,7 @@ impl ZellijPlugin for ShortcutsTui {
         }
     }
 
-    fn render(&mut self, rows: usize, cols: usize) {
+    fn render(&mut self, rows: usize, _cols: usize) {
         let Some(config) = &self.config else {
             println!("Loading...");
             return;

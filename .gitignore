@@ -27,6 +27,10 @@ npm-debug.log*
 # Bun
 bun.lockb
 
+# Rust
+target/
+Cargo.lock
+
 # Test coverage
 coverage/
 

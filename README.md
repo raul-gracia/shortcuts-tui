@@ -95,6 +95,49 @@ See [config/shortcuts.example.yaml](config/shortcuts.example.yaml) for a complet
 
 ## Integrations
 
+### Neovim
+
+Floating window plugin with health checks. Using lazy.nvim:
+
+```lua
+{
+  "raul-gracia/shortcuts-tui",
+  dir = "integrations/neovim",
+  keys = { { "<leader>?", "<cmd>ShortcutsTui<cr>", desc = "Shortcuts TUI" } },
+  opts = {},
+}
+```
+
+Run `:checkhealth shortcuts-tui` to verify installation.
+
+**[Full Neovim documentation →](integrations/neovim/README.md)**
+
+### Zellij
+
+Native WASM plugin for Zellij floating panes:
+
+```bash
+# Install plugin
+curl -L https://github.com/raul-gracia/shortcuts-tui/releases/latest/download/shortcuts-tui.wasm \
+  -o ~/.config/zellij/plugins/shortcuts-tui.wasm
+```
+
+Add to `~/.config/zellij/config.kdl`:
+
+```kdl
+keybinds {
+    shared {
+        bind "Ctrl g" {
+            LaunchOrFocusPlugin "file:~/.config/zellij/plugins/shortcuts-tui.wasm" {
+                floating true
+            }
+        }
+    }
+}
+```
+
+**[Full Zellij documentation →](integrations/zellij/README.md)**
+
 ### tmux
 
 Add to `~/.tmux.conf`:
@@ -110,41 +153,7 @@ set -g @shortcuts-tui-height "80%" # Popup height
 
 Then press `prefix + I` to install (if using TPM).
 
-### Neovim
-
-Using lazy.nvim:
-
-```lua
-{
-  "raul-gracia/shortcuts-tui.nvim",
-  keys = {
-    { "<leader>?", desc = "Shortcuts TUI" },
-  },
-  opts = {
-    cmd = "shortcuts-tui",
-    width = 0.9,
-    height = 0.85,
-    keymap = "<leader>?",
-  },
-}
-```
-
-### Zellij
-
-Add to your Zellij config (`~/.config/zellij/config.kdl`):
-
-```kdl
-keybinds {
-    shared {
-        bind "Ctrl g" {
-            LaunchOrFocusPlugin "file:~/.config/zellij/plugins/shortcuts-tui.wasm" {
-                floating true
-                move_to_focused_tab true
-            }
-        }
-    }
-}
-```
+**[Full tmux documentation →](integrations/tmux/README.md)**
 
 ## Development
 
