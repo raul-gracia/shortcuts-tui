@@ -1,89 +1,47 @@
-# Shortcuts TUI - Zellij Plugin
+# Shortcuts TUI - Zellij Integration
 
-A native WASM plugin for Zellij that displays a shortcuts cheat sheet in a floating pane.
+Run the shortcuts-tui application directly in Zellij using a simple keybinding.
 
 ## Requirements
 
 - Zellij >= 0.40.0
+- `shortcuts-tui` binary installed and in PATH
 
 ## Installation
 
-### Download Pre-built Plugin
+1. First, install the `shortcuts-tui` binary (see [main README](../../README.md))
 
-```bash
-# Create plugins directory
-mkdir -p ~/.config/zellij/plugins
-
-# Download the WASM plugin
-curl -L https://github.com/raul-gracia/shortcuts-tui/releases/latest/download/shortcuts-tui.wasm \
-  -o ~/.config/zellij/plugins/shortcuts-tui.wasm
-```
-
-### Build from Source
-
-```bash
-# Install Rust and add WASM target
-rustup target add wasm32-wasip1
-
-# Clone and build
-git clone https://github.com/raul-gracia/shortcuts-tui.git
-cd shortcuts-tui/integrations/zellij
-cargo build --release --target wasm32-wasip1
-
-# Copy to plugins directory
-mkdir -p ~/.config/zellij/plugins
-cp target/wasm32-wasip1/release/shortcuts_tui_zellij.wasm \
-   ~/.config/zellij/plugins/shortcuts-tui.wasm
-```
-
-## Configuration
-
-Add a keybinding to your Zellij config (`~/.config/zellij/config.kdl`):
+2. Create the layout file at `~/.config/zellij/layouts/shortcuts-tui.kdl`:
 
 ```kdl
-keybinds {
-    shared {
-        // Press Ctrl+g to toggle shortcuts panel
-        bind "Ctrl g" {
-            LaunchOrFocusPlugin "file:~/.config/zellij/plugins/shortcuts-tui.wasm" {
-                floating true
-                move_to_focused_tab true
-            }
-        }
+layout {
+    tab name="Shortcuts" focus=true {
+        pane command="shortcuts-tui" close_on_exit=true
     }
 }
 ```
 
-### Alternative: Launch from specific mode
+3. Add a keybinding to your Zellij config (`~/.config/zellij/config.kdl`):
 
 ```kdl
 keybinds {
-    normal {
-        // Press ? in normal mode
-        bind "?" {
-            LaunchOrFocusPlugin "file:~/.config/zellij/plugins/shortcuts-tui.wasm" {
-                floating true
+    shared_except "locked" {
+        bind "Alt ?" {
+            NewTab {
+                layout "shortcuts-tui"
             }
         }
     }
-}
-```
-
-### Pane size options
-
-```kdl
-LaunchOrFocusPlugin "file:~/.config/zellij/plugins/shortcuts-tui.wasm" {
-    floating true
-    move_to_focused_tab true
-    // Optional: set initial size (requires Zellij 0.40+)
-    // width "80%"
-    // height "70%"
 }
 ```
 
 ## Usage
 
-Once the plugin is loaded:
+Press `Alt+?` (or your configured keybinding) to open shortcuts-tui in a new fullscreen tab.
+
+When you exit with `ESC` or `q`, the tab closes automatically and returns you to your previous tab.
+
+### Keybindings (inside shortcuts-tui)
 
 | Key | Action |
 |-----|--------|
@@ -91,62 +49,60 @@ Once the plugin is loaded:
 | `Shift+Tab` | Previous category |
 | `1-9` | Jump to category by number |
 | `/` | Start search mode |
-| `ESC` | Exit search / Close plugin |
-| `q` | Close plugin |
+| `ESC` | Exit search / Close |
+| `q` | Close |
 
-## Current Limitations
+## Alternative Configurations
 
-- Uses built-in default shortcuts (Git, Zellij basics)
-- Custom YAML config loading not yet implemented (planned)
-- Theme customization not yet available (planned)
+### Floating pane (smaller window)
 
-## Development
+If you prefer a floating pane instead of a full tab:
 
-```bash
-# Build debug version
-cargo build --target wasm32-wasip1
-
-# Build release version (smaller, optimized)
-cargo build --release --target wasm32-wasip1
-
-# The output will be at:
-# target/wasm32-wasip1/release/shortcuts_tui_zellij.wasm
+```kdl
+keybinds {
+    shared_except "locked" {
+        bind "Alt ?" {
+            Run "shortcuts-tui" {
+                floating true
+                close_on_exit true
+            }
+        }
+    }
+}
 ```
 
-### Testing locally
+### In-place (replace current pane)
 
-```bash
-# Copy to plugins and restart Zellij
-cp target/wasm32-wasip1/release/shortcuts_tui_zellij.wasm \
-   ~/.config/zellij/plugins/shortcuts-tui.wasm
+Run in the current pane (useful for small layouts):
 
-# Start a new Zellij session to load the updated plugin
-zellij
+```kdl
+keybinds {
+    shared_except "locked" {
+        bind "Alt ?" {
+            Run "shortcuts-tui" {
+                in_place true
+                close_on_exit true
+            }
+        }
+    }
+}
 ```
 
 ## Troubleshooting
 
-### Plugin doesn't load
+### "command not found: shortcuts-tui"
 
-1. Verify the WASM file exists and has correct permissions:
-   ```bash
-   ls -la ~/.config/zellij/plugins/shortcuts-tui.wasm
-   ```
+Make sure the `shortcuts-tui` binary is installed and in your PATH:
 
-2. Check Zellij version (requires >= 0.40.0):
-   ```bash
-   zellij --version
-   ```
+```bash
+which shortcuts-tui
+```
 
-3. Look for errors in Zellij logs:
-   ```bash
-   # Zellij logs are typically in /tmp or check your system's temp directory
-   cat /tmp/zellij-*/zellij.log
-   ```
+If not found, see the [installation instructions](../../README.md#installation).
 
-### Plugin crashes immediately
+### Layout file not found
 
-The plugin may be built for a different Zellij version. Try rebuilding from source with the matching `zellij-tile` version in `Cargo.toml`.
+Ensure the layout file exists at `~/.config/zellij/layouts/shortcuts-tui.kdl` with the correct content.
 
 ## License
 

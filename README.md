@@ -12,7 +12,7 @@ A terminal-based shortcuts cheat sheet with fuzzy search and native integrations
 - Bento box / column grid layout for shortcut groups
 - YAML-based configuration
 - Native integrations for:
-  - **Zellij** (WASM plugin)
+  - **Zellij** (keybinding + layout)
   - **tmux** (TPM plugin with display-popup)
   - **Neovim** (floating window plugin)
 - Cross-platform binaries (macOS, Windows, Linux)
@@ -114,27 +114,33 @@ Run `:checkhealth shortcuts-tui` to verify installation.
 
 ### Zellij
 
-Native WASM plugin for Zellij floating panes:
+Run shortcuts-tui in a dedicated tab with a simple keybinding.
 
-```bash
-# Install plugin
-curl -L https://github.com/raul-gracia/shortcuts-tui/releases/latest/download/shortcuts-tui.wasm \
-  -o ~/.config/zellij/plugins/shortcuts-tui.wasm
+1. Create the layout file at `~/.config/zellij/layouts/shortcuts-tui.kdl`:
+
+```kdl
+layout {
+    tab name="Shortcuts" focus=true {
+        pane command="shortcuts-tui" close_on_exit=true
+    }
+}
 ```
 
-Add to `~/.config/zellij/config.kdl`:
+2. Add to `~/.config/zellij/config.kdl`:
 
 ```kdl
 keybinds {
-    shared {
-        bind "Ctrl g" {
-            LaunchOrFocusPlugin "file:~/.config/zellij/plugins/shortcuts-tui.wasm" {
-                floating true
+    shared_except "locked" {
+        bind "Alt ?" {
+            NewTab {
+                layout "shortcuts-tui"
             }
         }
     }
 }
 ```
+
+Press `Alt+?` to open, `ESC` or `q` to close.
 
 **[Full Zellij documentation →](integrations/zellij/README.md)**
 

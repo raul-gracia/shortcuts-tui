@@ -9,32 +9,6 @@ permissions:
   contents: write
 
 jobs:
-  build-wasm:
-    runs-on: ubuntu-latest
-    name: Build Zellij WASM Plugin
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-wasip1
-
-      - name: Build WASM plugin
-        working-directory: integrations/zellij
-        run: |
-          cargo build --release --target wasm32-wasip1
-          cp target/wasm32-wasip1/release/shortcuts_tui_zellij.wasm shortcuts-tui.wasm
-
-      - name: Upload WASM artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: shortcuts-tui.wasm
-          path: integrations/zellij/shortcuts-tui.wasm
-          retention-days: 1
-
   build:
     strategy:
       fail-fast: false
@@ -90,7 +64,7 @@ jobs:
           retention-days: 1
 
   release:
-    needs: [build, build-wasm]
+    needs: [build]
     runs-on: ubuntu-latest
     name: Create Release
 
