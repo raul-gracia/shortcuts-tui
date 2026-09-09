@@ -41,6 +41,51 @@ function Background({
   );
 }
 
+// Builds the bottom-border line for a scrollable panel, e.g.
+// "╰ 6-20/40 ▼ ──────╯". Exported (and kept pure, independent of any
+// component) so it can be unit-tested directly against narrow `innerWidth`
+// values without needing the whole app's terminal-width-driven layout to
+// cooperate — a narrow enough overall terminal to shrink `innerWidth` this
+// much already breaks the header/tab bar for unrelated, pre-existing
+// reasons, so exercising this through a full render is impractical.
+//
+// The whole line is built and fitted by plain JS character count
+// (`.length`), matching how the rest of this hand-rolled border is laid
+// out (the outer frame pads rows to width by character count too, not by
+// rendered display width) — so every glyph used here must occupy exactly
+// one display column. "▼"/"▲" do; a single "↕" glyph (used in an earlier
+// version of this code for "scrollable both ways") does not — it renders
+// 2 columns wide despite being one JS character, which silently made that
+// one line, and everything laid out relative to it, one column too wide,
+// corrupting the whole grid for any genuinely mid-scroll frame. "▲▼" (both
+// arrows, no gap between them) reads the same way and is two width-1
+// characters.
+export function buildScrollIndicatorBorder(
+  start: number,
+  end: number,
+  total: number,
+  innerWidth: number
+): string {
+  const atTop = start === 0;
+  const atBottom = end >= total;
+  const arrow = atBottom ? (atTop ? "" : "▲") : atTop ? "▼" : "▲▼";
+  // Fit to `innerWidth` without ever truncating *through* the arrow: a
+  // narrow panel dropping just the "▼" half of "▲▼" would silently read
+  // as "can only scroll up" even though it's still scrollable both ways.
+  // If there's room for the position/count but not the arrow too, drop
+  // the arrow whole rather than split it.
+  const core = ` ${start + 1}-${end}/${total} `;
+  const withArrow = arrow ? `${core}${arrow} ` : core;
+  const fittedLabel =
+    withArrow.length <= innerWidth
+      ? withArrow
+      : core.length <= innerWidth
+        ? core
+        : core.slice(0, innerWidth);
+  const remaining = Math.max(0, innerWidth - fittedLabel.length);
+  return "╰" + fittedLabel + "─".repeat(remaining) + "╯";
+}
+
 // Bento box component for each shortcut group with custom solid borders.
 // When the group has more shortcuts than fit in `maxVisibleRows`, only a
 // window of `maxVisibleRows` items (starting at `scrollOffset`) is shown,
@@ -86,28 +131,11 @@ function BentoBox({
     : group.shortcuts;
 
   // Embed a scroll-position indicator in the bottom border when the panel
-  // is scrollable, e.g. "╰ 6-20/40 ▼ ──────╯". This whole line is built
-  // and fitted by plain JS character count (`.length`), matching how the
-  // rest of this hand-rolled border is laid out (the outer frame pads
-  // rows to width by character count too, not by rendered display width)
-  // — so every glyph used here must occupy exactly one display column.
-  // "▼"/"▲" do; the single "↕" glyph this used to use for "scrollable
-  // both ways" does not (it renders 2 columns wide despite being one JS
-  // character), which silently made that one line, and everything laid
-  // out relative to it, one column too wide — corrupting the whole grid
-  // for any genuinely mid-scroll frame. "▲▼" (both arrows, no gap between
-  // them) reads the same way and is two width-1 characters.
-  let bottomBorder = "╰" + "─".repeat(innerWidth) + "╯";
-  if (needsScroll) {
-    const end = start + visibleShortcuts.length;
-    const atTop = start === 0;
-    const atBottom = end >= total;
-    const arrow = atBottom ? (atTop ? "" : "▲") : atTop ? "▼" : "▲▼";
-    const label = ` ${start + 1}-${end}/${total}${arrow ? " " + arrow : ""} `;
-    const fittedLabel = label.length <= innerWidth ? label : label.slice(0, innerWidth);
-    const remaining = Math.max(0, innerWidth - fittedLabel.length);
-    bottomBorder = "╰" + fittedLabel + "─".repeat(remaining) + "╯";
-  }
+  // is scrollable, e.g. "╰ 6-20/40 ▼ ──────╯" (see `buildScrollIndicatorBorder`
+  // above for the width-safety details).
+  const bottomBorder = needsScroll
+    ? buildScrollIndicatorBorder(start, start + visibleShortcuts.length, total, innerWidth)
+    : "╰" + "─".repeat(innerWidth) + "╯";
 
   return (
     <Box flexDirection="column" width={boxWidth}>
@@ -171,7 +199,18 @@ export function App() {
   const headerHeight = 3; // Header + margin
   const tabBarHeight = 2; // Tab bar + margin
   const searchBarHeight = 2; // Search bar + margin
-  const footerHeight = 3; // Footer separator + help text
+  // Footer separator + help text + (when a panel is scrollable) a second
+  // help line with scroll-specific bindings. Budgeted for the scrollable
+  // case unconditionally, not just when `canScroll` ends up true: whether
+  // a panel needs scrolling is only known *after* `availableHeight` (and
+  // therefore `maxVisibleRowsPerBox`) is computed from this same budget,
+  // so this can't depend on that later result without circularity.
+  // Under-budgeting this by one line is exactly the class of bug this
+  // ticket exists to fix, just relocated to the footer instead of the
+  // panel: at the shortest terminal heights this ticket targets, the
+  // extra line silently ate into the separator row instead of getting
+  // its own, and Ink squeezed it into the row above rather than erroring.
+  const footerHeight = 4;
   const availableHeight = terminalHeight - headerHeight - tabBarHeight - searchBarHeight - footerHeight - 4; // -4 for outer border/padding
 
   // Rows available for shortcuts inside a single panel (title + top/bottom border overhead).

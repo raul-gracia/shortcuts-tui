@@ -371,4 +371,89 @@ describe("App panel scrolling (DC-184)", () => {
 
     instance.unmount();
   });
+
+  test("the footer's height budget reserves a row for the scroll-hint line instead of taking it from the panel unaccounted (regression: footerHeight wasn't updated when that line was added)", async () => {
+    // At 20 rows the footer already renders as three clean lines (separator,
+    // help text, scroll hint) even with the *old*, under-counted footer
+    // budget, because there happens to be enough overall slack at this
+    // particular size — so asserting on visual cleanliness alone here
+    // wouldn't actually distinguish the fix from its absence. What the fix
+    // *does* provably change is how many panel rows the layout budgets for:
+    // with the old (too-small) footer budget, `maxVisibleRowsPerBox` comes
+    // out one row too high, since it doesn't know the footer will actually
+    // need one more row than that budget assumed.
+    const instance = render(React.createElement(App));
+    await flush();
+    await resizeTo(instance, 20);
+
+    const frame = instance.lastFrame() ?? "";
+    // Both footer lines must still be present and on separate lines.
+    const lines = frame.split("\n");
+    const helpLine = lines.find((line) => line.includes("ESC/q: Quit"));
+    const scrollHintLine = lines.find((line) => line.includes("Panel top/bottom"));
+    expect(helpLine).toBeDefined();
+    expect(scrollHintLine).toBeDefined();
+    expect(helpLine).not.toBe(scrollHintLine);
+
+    // With the footer correctly budgeted for its second line, only 2 of the
+    // 40 items are visible at 20 rows ("1-2/40"). Before this fix, the
+    // panel was sized as if the footer only ever had one help line,
+    // showing one row too many ("1-3/40") — the exact amount of vertical
+    // space the real (two-line) footer actually needs but wasn't charged
+    // for anywhere in the budget.
+    expect(frame).toContain("1-2/40");
+    expect(frame).not.toContain("1-3/40");
+
+    instance.unmount();
+  });
+
+});
+
+describe("buildScrollIndicatorBorder (DC-184)", () => {
+  // A narrow enough overall terminal to shrink a panel's `innerWidth` down
+  // to single digits already breaks the app's header/tab bar for
+  // unrelated, pre-existing reasons (verified separately, not asserted
+  // here) — so this is tested directly against the pure function rather
+  // than through a full render, where that confound would make the
+  // scenario impossible to isolate.
+  let buildScrollIndicatorBorder: typeof import("./App").buildScrollIndicatorBorder;
+
+  beforeAll(async () => {
+    // Dynamic import, not a static one: a static `import { ... } from
+    // "./App"` at the top of this file would be hoisted and evaluate
+    // `./App` (and transitively `configLoader.ts`'s `homedir()` capture)
+    // before the `os` mock in the describe block above gets a chance to
+    // run, breaking that block's tests. This function doesn't touch
+    // config/homedir at all, so reusing whatever module instance is
+    // already cached by the other describe block's own dynamic import
+    // (or freshly importing one, if this ever runs first) is fine either
+    // way.
+    ({ buildScrollIndicatorBorder } = await import("./App"));
+  });
+
+  test("never splits the 'scrollable both ways' arrow pair when truncating for a narrow panel", () => {
+    // Regression: naive `label.slice(0, innerWidth)` truncation could cut
+    // through "▲▼", keeping just the "▲" half and silently implying the
+    // panel can only scroll up when it can actually scroll both ways.
+    const full = buildScrollIndicatorBorder(19, 28, 40, 40); // plenty of room
+    expect(full).toContain("▲▼");
+
+    // Just barely too narrow for " 20-28/40 ▲▼ " (13 chars) but with room
+    // for " 20-28/40 " (10 chars) alone.
+    const tooNarrowForArrow = buildScrollIndicatorBorder(19, 28, 40, 11);
+    expect(tooNarrowForArrow).not.toContain("▲");
+    expect(tooNarrowForArrow).not.toContain("▼");
+    expect(tooNarrowForArrow).toContain("20-28/40");
+
+    // Sanity: still closes properly and pads to the declared width.
+    expect(tooNarrowForArrow.startsWith("╰")).toBe(true);
+    expect(tooNarrowForArrow.endsWith("╯")).toBe(true);
+    expect(tooNarrowForArrow.length).toBe(11 + 2);
+  });
+
+  test("top/bottom single-arrow indicators are unaffected by the fix", () => {
+    expect(buildScrollIndicatorBorder(0, 9, 40, 40)).toContain("▼"); // at top, more below
+    expect(buildScrollIndicatorBorder(30, 40, 40, 40)).toContain("▲"); // at bottom, more above
+    expect(buildScrollIndicatorBorder(0, 40, 40, 40)).not.toMatch(/[▲▼]/); // fits entirely, no indicator needed
+  });
 });
