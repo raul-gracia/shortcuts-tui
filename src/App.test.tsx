@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import React from "react";
+import stringWidth from "string-width";
 import { cleanup, render } from "ink-testing-library";
 
 // DC-184: the panel viewport (a BentoBox of shortcuts) did not scroll
@@ -310,6 +311,63 @@ describe("App panel scrolling (DC-184)", () => {
     expect(frame).toContain(LAST_BIG_KEY);
     // No scroll indicator/help text should be shown when nothing overflows.
     expect(frame).toContain("j/k: Page");
+
+    instance.unmount();
+  });
+
+  test("ESC exits search mode instead of quitting the whole app (regression: ESC used to fire the global quit handler unconditionally)", async () => {
+    const instance = render(React.createElement(App));
+    await flush();
+    await resizeTo(instance, SHORT_TERMINAL_ROWS);
+
+    instance.stdin.write("/");
+    await flush();
+    instance.stdin.write("z");
+    await flush();
+    expect(instance.lastFrame() ?? "").toContain("/ z");
+
+    // ESC while searching must clear search mode, not quit.
+    instance.stdin.write("\x1b");
+    await flush();
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).not.toContain("/ z");
+    expect(frame).toContain("Press / to search");
+
+    // Confirm the app is genuinely still running (not unmounted): a
+    // scroll key should still have an effect.
+    instance.stdin.write("G");
+    await flush();
+    expect(instance.lastFrame() ?? "").toContain(LAST_BIG_KEY);
+
+    instance.unmount();
+  });
+
+  test("a genuinely mid-scroll frame renders a properly closed panel (regression: the scroll-both-ways indicator must stay one display column per character)", async () => {
+    const instance = render(React.createElement(App));
+    await flush();
+    await resizeTo(instance, SHORT_TERMINAL_ROWS);
+
+    // Scroll to a position that is neither the very top nor the very
+    // bottom, so the indicator shows the "scrollable both ways" glyph
+    // rather than "▼"/"▲" alone.
+    for (let i = 0; i < 20; i++) {
+      instance.stdin.write("j");
+    }
+    await flush();
+
+    const frame = instance.lastFrame() ?? "";
+    const lines = frame.split("\n").filter((line) => line.length > 0);
+    const indicatorLine = lines.find((line) => line.includes("▲▼"));
+    expect(indicatorLine).toBeDefined();
+    // The bottom border must still close...
+    expect(indicatorLine).toContain("╯");
+    // ...and every rendered line must be the same display width. This
+    // whole hand-rolled border is laid out by JS character count, not
+    // rendered display width, so any glyph here that isn't exactly one
+    // display column wide (the original "↕" was two) throws off that
+    // line, and everything laid out relative to it, by the difference.
+    const widths = new Set(lines.map((line) => stringWidth(line)));
+    expect(widths.size).toBe(1);
 
     instance.unmount();
   });

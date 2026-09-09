@@ -86,13 +86,23 @@ function BentoBox({
     : group.shortcuts;
 
   // Embed a scroll-position indicator in the bottom border when the panel
-  // is scrollable, e.g. "╰ 6-20/40 ▼ ──────╯".
+  // is scrollable, e.g. "╰ 6-20/40 ▼ ──────╯". This whole line is built
+  // and fitted by plain JS character count (`.length`), matching how the
+  // rest of this hand-rolled border is laid out (the outer frame pads
+  // rows to width by character count too, not by rendered display width)
+  // — so every glyph used here must occupy exactly one display column.
+  // "▼"/"▲" do; the single "↕" glyph this used to use for "scrollable
+  // both ways" does not (it renders 2 columns wide despite being one JS
+  // character), which silently made that one line, and everything laid
+  // out relative to it, one column too wide — corrupting the whole grid
+  // for any genuinely mid-scroll frame. "▲▼" (both arrows, no gap between
+  // them) reads the same way and is two width-1 characters.
   let bottomBorder = "╰" + "─".repeat(innerWidth) + "╯";
   if (needsScroll) {
     const end = start + visibleShortcuts.length;
     const atTop = start === 0;
     const atBottom = end >= total;
-    const arrow = atBottom ? (atTop ? "" : "▲") : atTop ? "▼" : "↕";
+    const arrow = atBottom ? (atTop ? "" : "▲") : atTop ? "▼" : "▲▼";
     const label = ` ${start + 1}-${end}/${total}${arrow ? " " + arrow : ""} `;
     const fittedLabel = label.length <= innerWidth ? label : label.slice(0, innerWidth);
     const remaining = Math.max(0, innerWidth - fittedLabel.length);
@@ -395,8 +405,12 @@ export function App() {
   }
 
   useInput((input, key) => {
-    // Exit on ESC or q (when not in search mode)
-    if (key.escape || (input === "q" && !searchMode)) {
+    // Exit on ESC or q — but not ESC while in search mode, where it
+    // means "exit search mode" instead (handled below). This condition
+    // used to fire on ESC unconditionally, which made the "exit search
+    // mode" branch below unreachable dead code: there was no way to leave
+    // search mode without quitting the whole app.
+    if ((key.escape && !searchMode) || (input === "q" && !searchMode)) {
       exit();
       return;
     }
