@@ -17,6 +17,7 @@
     "build:macos-intel": "bun build ./src/index.tsx --compile --target=bun-darwin-x64 --outfile=dist/shortcuts-tui-darwin-x64",
     "build:windows": "bun build ./src/index.tsx --compile --target=bun-windows-x64 --outfile=dist/shortcuts-tui-windows-x64.exe",
     "typecheck": "tsc --noEmit",
+    "test": "bun test",
     "lint": "eslint src/",
     "format": "prettier --write src/"
   },
@@ -34,8 +35,10 @@
     "@typescript-eslint/eslint-plugin": "^8.18.0",
     "@typescript-eslint/parser": "^8.18.0",
     "eslint": "^9.16.0",
+    "ink-testing-library": "^4.0.0",
     "prettier": "^3.4.2",
     "react-devtools-core": "^7.0.1",
+    "string-width": "^7.2.0",
     "typescript": "^5.7.2"
   },
   "author": "Raul Gracia",
