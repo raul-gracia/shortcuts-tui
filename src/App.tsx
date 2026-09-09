@@ -164,10 +164,17 @@ export function App() {
   const footerHeight = 3; // Footer separator + help text
   const availableHeight = terminalHeight - headerHeight - tabBarHeight - searchBarHeight - footerHeight - 4; // -4 for outer border/padding
 
-  // Estimate box height (title + shortcuts + borders)
-  const estimateBoxHeight = (group: ShortcutGroup) => group.shortcuts.length + 3; // +3 for title and borders
   // Rows available for shortcuts inside a single panel (title + top/bottom border overhead).
   const maxVisibleRowsPerBox = Math.max(1, availableHeight - 3);
+  // Estimate box height (title + shortcuts + borders), capped to what a
+  // panel actually renders once it's scrollable: a panel never grows
+  // taller than `maxVisibleRowsPerBox` regardless of its item count, so
+  // pagination must size it that way too — otherwise a tall-but-scrollable
+  // group's *uncapped* item count still forces smaller sibling groups onto
+  // their own page, even though on screen there was room for both
+  // (the entire point of making panels scrollable was to avoid that).
+  const estimateBoxHeight = (group: ShortcutGroup) =>
+    Math.min(group.shortcuts.length, maxVisibleRowsPerBox) + 3;
 
   // Calculate boxes per row
   const availableWidth = terminalWidth - 6;
@@ -187,11 +194,17 @@ export function App() {
     if (!stdout || typeof stdout.on !== "function") return;
     const handleResize = () => {
       forceUpdate();
-      // Synchronous with the resize itself (see the tab-switch comment
-      // below for why a deferred effect isn't safe here): a scroll key
-      // pressed right after a resize, in the same input burst, must not
-      // fold against a scroll position sized for the pre-resize layout.
-      dispatchNav({ type: "resetScroll" });
+      // Full reset (page AND scroll), synchronous with the resize itself
+      // (see the tab-switch comment below for why a deferred effect isn't
+      // safe here). Page has to be reset too, not just scroll: a
+      // width-driven repagination can change *which groups* land on a
+      // given page index without changing the *number* of pages, so
+      // merely clamping the existing index (which the per-render clamp
+      // below already does) isn't enough — it can silently swap the
+      // content shown at the currently-selected page. Resetting to page 0
+      // makes the outcome predictable instead of dependent on exactly how
+      // the reflow happened to land.
+      dispatchNav({ type: "setPage", page: 0 });
     };
     stdout.on("resize", handleResize);
     return () => {
@@ -309,7 +322,6 @@ export function App() {
     | { type: "panelTop" }
     | { type: "panelBottom" }
     | { type: "setPage"; page: number }
-    | { type: "resetScroll" }
     | { type: "clamp"; page: number; scroll: number };
 
   function navReducer(state: { page: number; scroll: number }, action: NavAction) {
@@ -347,8 +359,6 @@ export function App() {
       }
       case "setPage":
         return { page: action.page, scroll: 0 };
-      case "resetScroll":
-        return { ...state, scroll: 0 };
       case "clamp":
         return { page: action.page, scroll: action.scroll };
       default:
@@ -391,32 +401,42 @@ export function App() {
       return;
     }
 
-    // Toggle search mode
+    // Toggle search mode. Resetting here is a no-op today (an empty query
+    // shows the same content as browsing), but keeps this trigger
+    // consistent with every other one below rather than relying on it
+    // happening to already be at page 0.
     if (input === "/" && !searchMode) {
       setSearchMode(true);
+      dispatchNav({ type: "setPage", page: 0 });
       return;
     }
 
-    // Exit search mode
+    // Exit search mode. Full reset (page AND scroll): returning to the
+    // active category's own pagination is a different `pages` array from
+    // whatever search-results pagination was showing, so the previous
+    // page index has no defined meaning here — see the resize handler
+    // above for why "just clamp the index" isn't enough on its own.
     if (key.escape && searchMode) {
       setSearchMode(false);
       setSearchQuery("");
-      dispatchNav({ type: "resetScroll" });
+      dispatchNav({ type: "setPage", page: 0 });
       return;
     }
 
-    // Handle search input. Each keystroke re-filters the displayed
-    // groups, so scroll resets to the top of the new results on every
-    // change (a pure nicety — `clampedScroll` below is always kept in
-    // range regardless — but resetting here keeps it synchronous with the
-    // content change instead of depending on an effect).
+    // Handle search input. Each keystroke re-filters into a *new* set of
+    // result-groups with its own pagination (grouped by category/group,
+    // built fresh from `getAllShortcuts` — see `displayedShortcuts`
+    // above), so both page and scroll reset on every change via
+    // "setPage": the old page index doesn't refer to anything meaningful
+    // in the new results (same reason the resize and tab-switch resets
+    // above use "setPage" rather than a scroll-only reset).
     if (searchMode) {
       if (key.backspace || key.delete) {
         setSearchQuery((prev) => prev.slice(0, -1));
-        dispatchNav({ type: "resetScroll" });
+        dispatchNav({ type: "setPage", page: 0 });
       } else if (input && !key.ctrl && !key.meta) {
         setSearchQuery((prev) => prev + input);
-        dispatchNav({ type: "resetScroll" });
+        dispatchNav({ type: "setPage", page: 0 });
       }
       return;
     }

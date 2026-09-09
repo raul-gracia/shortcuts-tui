@@ -274,6 +274,31 @@ describe("App panel scrolling (DC-184)", () => {
     instance.unmount();
   });
 
+  test("resizing to a terminal that's still short (panel still needs scrolling) resets to the top, not just clamps near the bottom", async () => {
+    // This specifically distinguishes the resize handler's explicit
+    // full reset from the generic per-render clamp that runs regardless
+    // of *why* state changed: growing from 15 to 20 rows still leaves the
+    // panel scrollable (scrollableMax shrinks from 39 to 37, it doesn't
+    // hit 0), so a bare clamp alone would only trim 39 -> 37 and leave the
+    // view sitting near the bottom. The explicit reset should instead
+    // land at the top (scroll 0), same as any other resize.
+    const instance = render(React.createElement(App));
+    await flush();
+    await resizeTo(instance, SHORT_TERMINAL_ROWS);
+
+    instance.stdin.write("G");
+    await flush();
+    expect(instance.lastFrame() ?? "").toContain(LAST_BIG_KEY);
+
+    await resizeTo(instance, 20);
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain(FIRST_BIG_KEY);
+    expect(frame).not.toContain(LAST_BIG_KEY);
+    expect(frame).toContain("j/k/↑↓/PgUp/PgDn: Scroll"); // still scrollable at 20 rows
+
+    instance.unmount();
+  });
+
   test("on a tall terminal the panel fits and j/k still page as before", async () => {
     const instance = render(React.createElement(App));
     await flush();
