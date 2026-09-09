@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { Box, Text, useInput, useApp, useStdout } from "ink";
 import { Fzf } from "fzf";
 import { loadConfig, getAllShortcuts } from "./utils/configLoader";
@@ -41,15 +41,22 @@ function Background({
   );
 }
 
-// Bento box component for each shortcut group with custom solid borders
+// Bento box component for each shortcut group with custom solid borders.
+// When the group has more shortcuts than fit in `maxVisibleRows`, only a
+// window of `maxVisibleRows` items (starting at `scrollOffset`) is shown,
+// and the bottom border doubles as a scroll-position indicator.
 function BentoBox({
   group,
   theme,
   boxWidth,
+  scrollOffset,
+  maxVisibleRows,
 }: {
   group: ShortcutGroup;
   theme: Theme;
   boxWidth: number;
+  scrollOffset: number;
+  maxVisibleRows: number;
 }) {
   const innerWidth = boxWidth - 2; // Width inside the border
   const keyColWidth = 20; // Fixed width for key column including leading space
@@ -70,6 +77,28 @@ function BentoBox({
 
   const descColWidth = innerWidth - keyColWidth;
 
+  const total = group.shortcuts.length;
+  const needsScroll = total > maxVisibleRows && maxVisibleRows > 0;
+  const maxStart = Math.max(0, total - maxVisibleRows);
+  const start = needsScroll ? Math.min(Math.max(0, scrollOffset), maxStart) : 0;
+  const visibleShortcuts = needsScroll
+    ? group.shortcuts.slice(start, start + maxVisibleRows)
+    : group.shortcuts;
+
+  // Embed a scroll-position indicator in the bottom border when the panel
+  // is scrollable, e.g. "╰ 6-20/40 ▼ ──────╯".
+  let bottomBorder = "╰" + "─".repeat(innerWidth) + "╯";
+  if (needsScroll) {
+    const end = start + visibleShortcuts.length;
+    const atTop = start === 0;
+    const atBottom = end >= total;
+    const arrow = atBottom ? (atTop ? "" : "▲") : atTop ? "▼" : "↕";
+    const label = ` ${start + 1}-${end}/${total}${arrow ? " " + arrow : ""} `;
+    const fittedLabel = label.length <= innerWidth ? label : label.slice(0, innerWidth);
+    const remaining = Math.max(0, innerWidth - fittedLabel.length);
+    bottomBorder = "╰" + fittedLabel + "─".repeat(remaining) + "╯";
+  }
+
   return (
     <Box flexDirection="column" width={boxWidth}>
       {/* Top border */}
@@ -86,13 +115,13 @@ function BentoBox({
         <Text color={theme.border} backgroundColor={theme.background}>│</Text>
       </Text>
 
-      {/* Shortcuts */}
-      {group.shortcuts.map((shortcut, idx) => {
+      {/* Shortcuts (windowed to the visible scroll range) */}
+      {visibleShortcuts.map((shortcut, idx) => {
         const keyText = fitText(" " + shortcut.keys, keyColWidth);
         const descText = fitText(shortcut.description, descColWidth);
 
         return (
-          <Text key={idx} backgroundColor={theme.background}>
+          <Text key={start + idx} backgroundColor={theme.background}>
             <Text color={theme.border} backgroundColor={theme.background}>│</Text>
             <Text color={theme.primary} bold backgroundColor={theme.background}>
               {keyText}
@@ -105,9 +134,9 @@ function BentoBox({
         );
       })}
 
-      {/* Bottom border */}
+      {/* Bottom border (or scroll indicator) */}
       <Text color={theme.border} backgroundColor={theme.background}>
-        {"╰" + "─".repeat(innerWidth) + "╯"}
+        {bottomBorder}
       </Text>
     </Box>
   );
@@ -120,7 +149,9 @@ export function App() {
   const [activeTab, setActiveTab] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState(false);
-  const [currentPage, setCurrentPage] = useState(0);
+  // Bumped on terminal resize to force a re-render, since terminal
+  // dimensions are read directly from `stdout` rather than tracked in state.
+  const [, forceUpdate] = useReducer((tick: number) => tick + 1, 0);
 
   // Get terminal dimensions for full-screen layout
   const terminalWidth = stdout?.columns ?? 80;
@@ -135,6 +166,8 @@ export function App() {
 
   // Estimate box height (title + shortcuts + borders)
   const estimateBoxHeight = (group: ShortcutGroup) => group.shortcuts.length + 3; // +3 for title and borders
+  // Rows available for shortcuts inside a single panel (title + top/bottom border overhead).
+  const maxVisibleRowsPerBox = Math.max(1, availableHeight - 3);
 
   // Calculate boxes per row
   const availableWidth = terminalWidth - 6;
@@ -146,106 +179,45 @@ export function App() {
     setConfig(loadedConfig);
   }, []);
 
-  // Reset page when tab changes
+  // Recompute layout on terminal resize. Ink repaints its own Yoga-based
+  // layout on resize automatically, but the dimensions used here are read
+  // directly from `stdout` in plain JS, so we need an explicit listener to
+  // trigger a React re-render when the terminal is resized.
   useEffect(() => {
-    setCurrentPage(0);
-  }, [activeTab]);
+    if (!stdout || typeof stdout.on !== "function") return;
+    const handleResize = () => {
+      forceUpdate();
+      // Synchronous with the resize itself (see the tab-switch comment
+      // below for why a deferred effect isn't safe here): a scroll key
+      // pressed right after a resize, in the same input burst, must not
+      // fold against a scroll position sized for the pre-resize layout.
+      dispatchNav({ type: "resetScroll" });
+    };
+    stdout.on("resize", handleResize);
+    return () => {
+      stdout.off?.("resize", handleResize);
+    };
+  }, [stdout]);
 
   const theme: Theme = {
     ...DEFAULT_THEME,
     ...(config?.theme || {}),
   };
 
-  useInput((input, key) => {
-    // Exit on ESC or q (when not in search mode)
-    if (key.escape || (input === "q" && !searchMode)) {
-      exit();
-      return;
-    }
+  // Derive the groups shown on the current page/search so both rendering
+  // and the input handler below agree on what's scrollable. Computed
+  // unconditionally (with null-safe fallbacks) because `useInput`'s closure
+  // captures these values before we know whether `config` has loaded yet.
+  const activeCategory = config?.categories?.[activeTab];
+  let displayedShortcuts: ShortcutGroup[] = activeCategory?.groups || [];
 
-    // Toggle search mode
-    if (input === "/" && !searchMode) {
-      setSearchMode(true);
-      return;
-    }
-
-    // Exit search mode
-    if (key.escape && searchMode) {
-      setSearchMode(false);
-      setSearchQuery("");
-      return;
-    }
-
-    // Handle search input
-    if (searchMode) {
-      if (key.backspace || key.delete) {
-        setSearchQuery((prev) => prev.slice(0, -1));
-      } else if (input && !key.ctrl && !key.meta) {
-        setSearchQuery((prev) => prev + input);
-      }
-      return;
-    }
-
-    // Tab navigation
-    if (key.tab && !key.shift) {
-      setActiveTab((prev) =>
-        config ? (prev + 1) % config.categories.length : 0
-      );
-    } else if (key.tab && key.shift) {
-      setActiveTab((prev) =>
-        config
-          ? (prev - 1 + config.categories.length) % config.categories.length
-          : 0
-      );
-    }
-
-    // Page navigation with j/k or arrow keys
-    if (input === "j" || key.downArrow) {
-      setCurrentPage((prev) => prev + 1); // Will be clamped later
-    } else if (input === "k" || key.upArrow) {
-      setCurrentPage((prev) => Math.max(0, prev - 1));
-    }
-
-    // Number keys for quick tab switch
-    const num = parseInt(input, 10);
-    if (!isNaN(num) && num >= 1 && num <= 9 && config) {
-      const idx = num - 1;
-      if (idx < config.categories.length) {
-        setActiveTab(idx);
-      }
-    }
-  });
-
-  if (!config) {
-    return (
-      <Box width={terminalWidth} height={terminalHeight}>
-        <Background width={terminalWidth} height={terminalHeight} color={theme.background} />
-        <Box
-          width={terminalWidth}
-          height={terminalHeight}
-          borderStyle={BLOCK_BORDER}
-          borderColor={theme.primary}
-          justifyContent="center"
-          alignItems="center"
-        >
-          <Text color={theme.muted}>Loading...</Text>
-        </Box>
-      </Box>
-    );
-  }
-
-  const activeCategory = config.categories[activeTab];
-  let displayedShortcuts = activeCategory?.groups || [];
-
-  // Filter shortcuts if searching
-  if (searchQuery && searchMode) {
+  if (searchQuery && searchMode && config) {
     const allShortcuts = getAllShortcuts(config);
     const fzf = new Fzf(allShortcuts, {
       selector: (item) => `${item.keys} ${item.description}`,
     });
     const results = fzf.find(searchQuery);
 
-    // Group filtered results
     const groupedResults = new Map<string, typeof allShortcuts>();
     for (const result of results) {
       const key = `${result.item.category}/${result.item.group}`;
@@ -310,14 +282,216 @@ export function App() {
 
   const pages = paginateBoxes(displayedShortcuts);
   const totalPages = pages.length;
-  const clampedPage = Math.min(Math.max(0, currentPage), totalPages - 1);
 
-  // Update page if it was clamped
-  if (clampedPage !== currentPage) {
-    setCurrentPage(clampedPage);
+  const scrollableMaxForPage = (page: number): number => {
+    const boxes = pages[page] ?? [];
+    const tallest = boxes.reduce((max, group) => Math.max(max, group.shortcuts.length), 0);
+    return Math.max(0, tallest - maxVisibleRowsPerBox);
+  };
+  const clampPageIndex = (page: number) => Math.min(Math.max(0, page), Math.max(0, totalPages - 1));
+
+  // Page and scroll live in one reducer (rather than two separate
+  // `useState`s) because deciding "scroll further" vs. "advance to the
+  // next page" has to read both together, and it must always read the
+  // *latest* values — not whatever a stale closure captured. Ink can
+  // deliver several keypresses to this component before React gets a
+  // chance to run effects in between (its stdin handler drains `read()`
+  // in a loop), so branching on closure-captured values here would let a
+  // burst of "j" presses scroll correctly but never actually cross into
+  // the next page. `useReducer` guarantees the reducer always sees the
+  // fully-applied prior state, however many actions were queued in one
+  // tick. The reducer closes over `pages`/`maxVisibleRowsPerBox`, which
+  // are safe to read fresh each render since they don't change from a
+  // scroll/page action itself.
+  type NavAction =
+    | { type: "down"; step: number }
+    | { type: "up"; step: number }
+    | { type: "panelTop" }
+    | { type: "panelBottom" }
+    | { type: "setPage"; page: number }
+    | { type: "resetScroll" }
+    | { type: "clamp"; page: number; scroll: number };
+
+  function navReducer(state: { page: number; scroll: number }, action: NavAction) {
+    switch (action.type) {
+      case "down": {
+        const page = clampPageIndex(state.page);
+        const max = scrollableMaxForPage(page);
+        if (max > 0 && state.scroll < max) {
+          return { page, scroll: Math.min(max, state.scroll + action.step) };
+        }
+        if (page + 1 < totalPages) {
+          return { page: page + 1, scroll: 0 };
+        }
+        // Already at the bottom of the last page: stay put rather than
+        // "advancing" past the end, which would otherwise get clamped back
+        // to this same page but with scroll wiped to 0 — silently undoing
+        // the scroll position instead of just doing nothing.
+        return { page, scroll: max };
+      }
+      case "up": {
+        const page = clampPageIndex(state.page);
+        if (state.scroll > 0) {
+          return { page, scroll: Math.max(0, state.scroll - action.step) };
+        }
+        if (page - 1 >= 0) {
+          return { page: page - 1, scroll: 0 };
+        }
+        return { page, scroll: 0 };
+      }
+      case "panelTop":
+        return { ...state, scroll: 0 };
+      case "panelBottom": {
+        const page = clampPageIndex(state.page);
+        return { page, scroll: scrollableMaxForPage(page) };
+      }
+      case "setPage":
+        return { page: action.page, scroll: 0 };
+      case "resetScroll":
+        return { ...state, scroll: 0 };
+      case "clamp":
+        return { page: action.page, scroll: action.scroll };
+      default:
+        return state;
+    }
   }
 
+  const [navState, dispatchNav] = useReducer(navReducer, { page: 0, scroll: 0 });
+
+  // Every trigger that should reset the page/scroll (tab switch, entering
+  // or exiting search mode, each search keystroke, terminal resize) does
+  // so with a synchronous `dispatchNav` call right at the point of change,
+  // rather than a `useEffect` watching for that value to change. This is
+  // deliberate, not just a style choice: a `useEffect`-based reset is
+  // deferred, and Ink can process several keypresses before React gets a
+  // chance to run effects in between (see the `navReducer` comment
+  // above). A first version of this fix used such an effect as a
+  // "harmless backstop" — it wasn't harmless: dispatched with a delay, it
+  // fired *after* a legitimate scroll the user made right after the
+  // triggering change, silently reverting that scroll back to 0. Doing
+  // the reset synchronously, atomically with the change that necessitates
+  // it, removes the gap where that could happen instead of just
+  // narrowing it.
+
+  const clampedPage = clampPageIndex(navState.page);
   const visibleBoxes = pages[clampedPage] || [];
+  const scrollableMax = scrollableMaxForPage(clampedPage);
+  const canScroll = scrollableMax > 0;
+  const clampedScroll = Math.min(Math.max(0, navState.scroll), scrollableMax);
+
+  // Correct stored state if pagination/content shrank out from under it.
+  if (clampedPage !== navState.page || clampedScroll !== navState.scroll) {
+    dispatchNav({ type: "clamp", page: clampedPage, scroll: clampedScroll });
+  }
+
+  useInput((input, key) => {
+    // Exit on ESC or q (when not in search mode)
+    if (key.escape || (input === "q" && !searchMode)) {
+      exit();
+      return;
+    }
+
+    // Toggle search mode
+    if (input === "/" && !searchMode) {
+      setSearchMode(true);
+      return;
+    }
+
+    // Exit search mode
+    if (key.escape && searchMode) {
+      setSearchMode(false);
+      setSearchQuery("");
+      dispatchNav({ type: "resetScroll" });
+      return;
+    }
+
+    // Handle search input. Each keystroke re-filters the displayed
+    // groups, so scroll resets to the top of the new results on every
+    // change (a pure nicety — `clampedScroll` below is always kept in
+    // range regardless — but resetting here keeps it synchronous with the
+    // content change instead of depending on an effect).
+    if (searchMode) {
+      if (key.backspace || key.delete) {
+        setSearchQuery((prev) => prev.slice(0, -1));
+        dispatchNav({ type: "resetScroll" });
+      } else if (input && !key.ctrl && !key.meta) {
+        setSearchQuery((prev) => prev + input);
+        dispatchNav({ type: "resetScroll" });
+      }
+      return;
+    }
+
+    // Tab navigation. The page/scroll reset is dispatched synchronously
+    // here, in the same event as the tab switch, rather than left to the
+    // `[activeTab]` effect below: `setActiveTab` uses a functional updater
+    // (safe against a stale closure deciding *which* tab to move to), but
+    // if the reset were only effect-driven, a scroll key pressed
+    // immediately after a tab switch — in the same input burst, before
+    // the effect gets a chance to run — would fold against the *previous*
+    // tab's pagination and land the new tab scrolled to a leftover
+    // position instead of the top. Making the reset part of the same
+    // synchronous update as the switch removes that window entirely.
+    if (key.tab && !key.shift) {
+      setActiveTab((prev) =>
+        config ? (prev + 1) % config.categories.length : 0
+      );
+      dispatchNav({ type: "setPage", page: 0 });
+    } else if (key.tab && key.shift) {
+      setActiveTab((prev) =>
+        config
+          ? (prev - 1 + config.categories.length) % config.categories.length
+          : 0
+      );
+      dispatchNav({ type: "setPage", page: 0 });
+    }
+
+    // When the current panel overflows the viewport, j/k, arrows and
+    // PgUp/PgDn scroll it first; once scrolled all the way to the bottom
+    // (or top), the same keys fall through to their original meaning of
+    // moving between pages, so a page is never left unreachable just
+    // because a panel on it needed scrolling. g/G jump to the top/bottom
+    // of the current panel only. This all goes through `dispatchNav` so
+    // the decision is always made against the latest state (see the
+    // `navReducer` comment above for why that matters).
+    if (input === "j" || key.downArrow || key.pageDown) {
+      dispatchNav({ type: "down", step: key.pageDown ? maxVisibleRowsPerBox : 1 });
+    } else if (input === "k" || key.upArrow || key.pageUp) {
+      dispatchNav({ type: "up", step: key.pageUp ? maxVisibleRowsPerBox : 1 });
+    } else if (input === "g") {
+      dispatchNav({ type: "panelTop" });
+    } else if (input === "G") {
+      dispatchNav({ type: "panelBottom" });
+    }
+
+    // Number keys for quick tab switch (same synchronous-reset reasoning
+    // as Tab/Shift+Tab above).
+    const num = parseInt(input, 10);
+    if (!isNaN(num) && num >= 1 && num <= 9 && config) {
+      const idx = num - 1;
+      if (idx < config.categories.length) {
+        setActiveTab(idx);
+        dispatchNav({ type: "setPage", page: 0 });
+      }
+    }
+  });
+
+  if (!config) {
+    return (
+      <Box width={terminalWidth} height={terminalHeight}>
+        <Background width={terminalWidth} height={terminalHeight} color={theme.background} />
+        <Box
+          width={terminalWidth}
+          height={terminalHeight}
+          borderStyle={BLOCK_BORDER}
+          borderColor={theme.primary}
+          justifyContent="center"
+          alignItems="center"
+        >
+          <Text color={theme.muted}>Loading...</Text>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box width={terminalWidth} height={terminalHeight}>
@@ -386,6 +560,8 @@ export function App() {
               group={group}
               theme={theme}
               boxWidth={boxWidth}
+              scrollOffset={clampedScroll}
+              maxVisibleRows={maxVisibleRowsPerBox}
             />
           ))}
         </Box>
@@ -398,7 +574,9 @@ export function App() {
         </Box>
         <Box justifyContent="space-between" width={terminalWidth - 4}>
           <Text color={theme.muted} backgroundColor={theme.background}>
-            {" Tab: Next | Shift+Tab: Prev | 1-9: Jump | j/k: Page | /: Search | ESC/q: Quit"}
+            {canScroll
+              ? " Tab: Next | Shift+Tab: Prev | 1-9: Jump | /: Search | ESC/q: Quit"
+              : " Tab: Next | Shift+Tab: Prev | 1-9: Jump | j/k: Page | /: Search | ESC/q: Quit"}
           </Text>
           {totalPages > 1 && (
             <Text color={theme.secondary} backgroundColor={theme.background}>
@@ -406,6 +584,13 @@ export function App() {
             </Text>
           )}
         </Box>
+        {canScroll && (
+          <Box width={terminalWidth - 4}>
+            <Text color={theme.secondary} backgroundColor={theme.background}>
+              {" j/k/↑↓/PgUp/PgDn: Scroll (then page) | g/G: Panel top/bottom"}
+            </Text>
+          </Box>
+        )}
       </Box>
     </Box>
   );
